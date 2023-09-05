@@ -551,6 +551,7 @@ class ReferencePosesTask(composer.Task, metaclass=abc.ABCMeta):
           self.get_all_reference_observations(physics))
 
   def should_terminate_episode(self, physics: 'mjcf.Physics'):
+    return False
     del physics  # physics unused by should_terminate_episode.
 
     if self._should_truncate:

@@ -397,8 +397,9 @@ class ReferencePosesTask(composer.Task, metaclass=abc.ABCMeta):
     for clip_number, (start, end, weight) in enumerate(
         zip(dataset.start_steps, dataset.end_steps, dataset.weights)):
       # length - required lookahead - minimum number of steps
-      last_possible_start = end - self._max_ref_step - self._min_steps
-
+      last_possible_start = max(end - self._max_ref_step - self._min_steps,1)
+      print("last_possible_start: ", last_possible_start)
+      print(self._always_init_at_clip_start)
       if self._always_init_at_clip_start:
         self._possible_starts += [(clip_number, start)]
         self._start_probabilities += [weight]
@@ -739,25 +740,34 @@ class ReferencePosesTask(composer.Task, metaclass=abc.ABCMeta):
     return reference_observations
 
   def get_reward(self, physics: 'mjcf.Physics') -> float:
-    reward, unused_debug_outputs, reward_channels = self._reward_fn(
-        termination_error=self._termination_error,
-        termination_error_threshold=self._termination_error_threshold,
-        reference_features=self._current_reference_features,
-        walker_features=self._walker_features,
-        reference_observations=self._reference_observations)
+    # HACK THAT ONLY SHOULD WORK FOR RUNNING DATASET
+    if self._time_step < 48:
+      reward, unused_debug_outputs, reward_channels = self._reward_fn(
+          termination_error=self._termination_error,
+          termination_error_threshold=self._termination_error_threshold,
+          reference_features=self._current_reference_features,
+          walker_features=self._walker_features,
+          reference_observations=self._reference_observations)
 
-    if 'actuator_force' in self._reward_keys:
-      reward_channels['actuator_force'] = -self._actuator_force_coeff*np.mean(
-          np.square(self._walker.actuator_force(physics)))
+      if 'actuator_force' in self._reward_keys:
+        reward_channels['actuator_force'] = -self._actuator_force_coeff*np.mean(
+            np.square(self._walker.actuator_force(physics)))
 
-    self._should_truncate = self._termination_error > self._termination_error_threshold
+      self._should_truncate = self._termination_error > self._termination_error_threshold
 
-    if self._props:
-      prop_termination = self._prop_termination_error > self._prop_termination_error_threshold
-      self._should_truncate = self._should_truncate or prop_termination
+      if self._props:
+        prop_termination = self._prop_termination_error > self._prop_termination_error_threshold
+        self._should_truncate = self._should_truncate or prop_termination
 
-    self.last_reward_channels = reward_channels
-    return reward
+      self.last_reward_channels = reward_channels
+      return reward
+    
+    else:
+      
+      xvel = self._walker.observables.torso_xvel(physics)
+      yvel = self._walker.observables.torso_yvel(physics)
+      speed = np.linalg.norm([xvel, yvel])     
+      return abs(4 - speed)
 
   def _set_walker(self, physics: 'mjcf.Physics'):
     timestep_features = tree.map_structure(lambda x: x[self._time_step],
@@ -899,6 +909,7 @@ class MultiClipMocapTracking(ReferencePosesTask):
     """Update the data after step."""
     super().after_step(physics, random_state)
     self._time_step += 1
+    self._time_step = min(self._time_step + 1, self._last_step)
 
     # Update the walker's data for this timestep.
     self._walker_features = utils.get_features(

@@ -899,7 +899,7 @@ class MultiClipMocapTracking(ReferencePosesTask):
     """Update the data after step."""
     super().after_step(physics, random_state)
     self._time_step += 1
-    self._time_step = min(self._time_step, 100)
+    self._time_step = min(self._time_step, 30)
 
     # Update the walker's data for this timestep.
     self._walker_features = utils.get_features(

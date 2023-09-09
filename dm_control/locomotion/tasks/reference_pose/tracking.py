@@ -753,19 +753,20 @@ class ReferencePosesTask(composer.Task, metaclass=abc.ABCMeta):
     if 'actuator_force' in self._reward_keys:
       reward_channels['actuator_force'] = -self._actuator_force_coeff*np.mean(
           np.square(self._walker.actuator_force(physics)))
-
-    self._should_truncate = self._termination_error > self._termination_error_threshold
     
     if self._time_step < 48:
-
+      self._should_truncate = self._termination_error > self._termination_error_threshold
       return reward
     
     else:     
       # print("time step: ", self._time_step)
       xvel = self._walker.observables.torso_xvel(physics)
       yvel = self._walker.observables.torso_yvel(physics)
-      speed = np.linalg.norm([xvel, yvel])     
-      return abs(4 - speed)
+      speed = np.linalg.norm([xvel, yvel])  
+      TARGET_SPEED = 4.
+      error = abs(TARGET_SPEED - speed)    
+      self._should_truncate = error > self._termination_error_threshold
+      return -error
 
   def _set_walker(self, physics: 'mjcf.Physics'):
     timestep_features = tree.map_structure(lambda x: x[self._time_step],

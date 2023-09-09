@@ -933,8 +933,8 @@ class MultiClipMocapTracking(ReferencePosesTask):
     }
 
     # Compute Error.
-    # TODO USE THIS BELOW FOR WALKING ONLY
-    TARGET_SPEED = 1.   # walking
+    # TODO USE THIS BELOW FOR JOGGING ONLY
+    TARGET_SPEED = 2.6
     if self._time_step < self._last_step:
       self._compute_termination_error()
     else:

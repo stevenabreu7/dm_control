@@ -741,29 +741,27 @@ class ReferencePosesTask(composer.Task, metaclass=abc.ABCMeta):
 
   def get_reward(self, physics: 'mjcf.Physics') -> float:
     # HACK THAT ONLY SHOULD WORK FOR RUNNING DATASET
+    # print("time step: ", self._time_step)
+    
+    reward, unused_debug_outputs, reward_channels = self._reward_fn(
+        termination_error=self._termination_error,
+        termination_error_threshold=self._termination_error_threshold,
+        reference_features=self._current_reference_features,
+        walker_features=self._walker_features,
+        reference_observations=self._reference_observations)
+
+    if 'actuator_force' in self._reward_keys:
+      reward_channels['actuator_force'] = -self._actuator_force_coeff*np.mean(
+          np.square(self._walker.actuator_force(physics)))
+
+    self._should_truncate = self._termination_error > self._termination_error_threshold
+    
     if self._time_step < 48:
-      reward, unused_debug_outputs, reward_channels = self._reward_fn(
-          termination_error=self._termination_error,
-          termination_error_threshold=self._termination_error_threshold,
-          reference_features=self._current_reference_features,
-          walker_features=self._walker_features,
-          reference_observations=self._reference_observations)
 
-      if 'actuator_force' in self._reward_keys:
-        reward_channels['actuator_force'] = -self._actuator_force_coeff*np.mean(
-            np.square(self._walker.actuator_force(physics)))
-
-      self._should_truncate = self._termination_error > self._termination_error_threshold
-
-      if self._props:
-        prop_termination = self._prop_termination_error > self._prop_termination_error_threshold
-        self._should_truncate = self._should_truncate or prop_termination
-
-      self.last_reward_channels = reward_channels
       return reward
     
-    else:
-      
+    else:     
+      # print("time step: ", self._time_step)
       xvel = self._walker.observables.torso_xvel(physics)
       yvel = self._walker.observables.torso_yvel(physics)
       speed = np.linalg.norm([xvel, yvel])     
@@ -909,7 +907,10 @@ class MultiClipMocapTracking(ReferencePosesTask):
     """Update the data after step."""
     super().after_step(physics, random_state)
     self._time_step += 1
-    self._time_step = min(self._time_step + 1, self._last_step)
+    # print("time step: ", self._time_step)
+    # if self._time_step > self._last_step:
+    #   self._time_step = 0
+    # self._time_step = min(self._time_step + 1, self._last_step)
 
     # Update the walker's data for this timestep.
     self._walker_features = utils.get_features(

@@ -415,11 +415,17 @@ class Environment(_CommonEnvironment, dm_env.Environment):
       reward = self._task.get_reward(self._physics_proxy)
       discount = self._task.get_discount(self._physics_proxy)
       # HACK POTENTIAL FIX - ADD end mocap as termination condition
+      if self._physics.time() >= self._time_limit:
+        print("--------------------------------------")
+        print("TERMINATING EPISODE - time limit (IGNORED!!!)")
+        print("--------------------------------------")
       terminating = (
           self._task.should_terminate_episode(self._physics_proxy)
-          or self._physics.time() >= self._time_limit or self._task._end_mocap
+          # or self._physics.time() >= self._time_limit
+          # or self._task._end_mocap  # already in should_terminate_episode
       )
     else:
+      print("TERMINATING EPISODE - physics divergent")
       reward = 0.0
       discount = 0.0
       terminating = True

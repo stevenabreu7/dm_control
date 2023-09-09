@@ -552,16 +552,17 @@ class ReferencePosesTask(composer.Task, metaclass=abc.ABCMeta):
           self.get_all_reference_observations(physics))
 
   def should_terminate_episode(self, physics: 'mjcf.Physics'):
-    return False
     del physics  # physics unused by should_terminate_episode.
 
     if self._should_truncate:
+      print("\tEPISODE END - Truncate")
       logging.info('Truncate with error %f.', self._termination_error)
       return True
 
     if self._end_mocap:
+      # HACK: ignoring the end of mocap
       logging.info('End of mocap.')
-      return True
+      return False
 
     return False
 
@@ -739,7 +740,7 @@ class ReferencePosesTask(composer.Task, metaclass=abc.ABCMeta):
               physics)
     return reference_observations
 
-    def get_reward(self, physics: 'mjcf.Physics') -> float:
+  def get_reward(self, physics: 'mjcf.Physics') -> float:
       # HACK THAT ONLY SHOULD WORK FOR RUNNING DATASET
       # print("time step: ", self._time_step)
       
@@ -914,11 +915,11 @@ class MultiClipMocapTracking(ReferencePosesTask):
   def after_step(self, physics: 'mjcf.Physics', random_state):
     """Update the data after step."""
     super().after_step(physics, random_state)
-    self._time_step += 1
+    # self._time_step += 1
     # print("time step: ", self._time_step)
     # if self._time_step > self._last_step:
     #   self._time_step = 0
-    # self._time_step = min(self._time_step + 1, self._last_step)
+    self._time_step = min(self._time_step + 1, self._last_step)
 
     # Update the walker's data for this timestep.
     self._walker_features = utils.get_features(
@@ -931,8 +932,19 @@ class MultiClipMocapTracking(ReferencePosesTask):
         for k, v in self._clip_reference_features.items()
     }
 
-    # Error.
-    self._compute_termination_error()
+    # Compute Error.
+    # TODO USE THIS BELOW FOR WALKING ONLY
+    TARGET_SPEED = 1.   # walking
+    if self._time_step < self._last_step:
+      self._compute_termination_error()
+    else:
+      xvel = self._walker.observables.torso_xvel(physics)
+      yvel = self._walker.observables.torso_yvel(physics)
+      speed = np.linalg.norm([xvel, yvel])
+      self._termination_error = (TARGET_SPEED - speed)**2
+      self._should_truncate = self._termination_error > self._termination_error_threshold
+      if self._termination_error > self._termination_error_threshold:
+        print('\tSPEED MISMATCH -> TERMINATING', self._termination_error, speed, TARGET_SPEED)
 
     # Terminate based on the error.
     self._end_mocap = self._time_step == self._last_step

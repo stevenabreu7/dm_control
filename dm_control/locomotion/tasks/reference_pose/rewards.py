@@ -156,10 +156,123 @@ def comic_reward_fn(termination_error, termination_error_threshold,
       reward_terms=sort_dict(reward_terms))
 
 
+def tracking_and_speed_fn(termination_error, termination_error_threshold,
+                    walker_features, reference_features, env, physics,**unused_kwargs):
+  
+  """" first part comic reward afterwards only speed reward"""
+  
+  xvel = env._walker.observables.torso_xvel(physics)
+  yvel = env._walker.observables.torso_yvel(physics)
+  speed = np.linalg.norm([xvel, yvel])  
+  TARGET_SPEED = 4.
+  MAX_DIFF_SPEED = 4.
+  error = (TARGET_SPEED - speed)**2
+  reward_speed = 1 - np.clip(abs(speed - TARGET_SPEED)/MAX_DIFF_SPEED,0,1)
+  # print("speed reward: ", reward)
+  debug_terms = {
+      'termination_error': termination_error,
+      'termination_error_threshold': termination_error_threshold
+  }
+  if env._time_step < 48:
+    return comic_reward_fn(termination_error, termination_error_threshold,\
+                    walker_features, reference_features,)
+  else:
+    termination_reward, debug_terms, termination_reward_terms = (
+      termination_reward_fn(speed, termination_error_threshold))  
+    reward_terms = {k: v for k, v in termination_reward_terms.items()}   
+    return RewardFnOutput(reward_speed,
+         debug=debug_terms,
+      reward_terms=sort_dict(reward_terms)                 ,
+    )
+
+
+def tracking_and_speed_fn_combined(termination_error, termination_error_threshold,
+                    walker_features, reference_features, env, physics,**unused_kwargs):
+  
+  """" first part comic reward afterwards only speed reward"""
+  
+  xvel = env._walker.observables.torso_xvel(physics)
+  yvel = env._walker.observables.torso_yvel(physics)
+  speed = np.linalg.norm([xvel, yvel])  
+  TARGET_SPEED = 4.
+  MAX_DIFF_SPEED = 4.
+  error = (TARGET_SPEED - speed)**2
+  reward_speed = 1 - np.clip(abs(speed - TARGET_SPEED)/MAX_DIFF_SPEED,0,1)
+  # print("speed reward: ", reward)
+  debug_terms = {
+      'termination_error': termination_error,
+      'termination_error_threshold': termination_error_threshold
+  }
+  if env._time_step < 48:
+    termination_reward, debug_terms, termination_reward_terms = (
+      termination_reward_fn(termination_error, termination_error_threshold))
+    mt_reward, mt_debug_terms, mt_reward_terms = multi_term_pose_reward_fn(
+      walker_features, reference_features)
+    debug_terms.update(mt_debug_terms)
+    reward_terms = {k: 0.5 * v for k, v in termination_reward_terms.items()}
+    reward_terms.update(
+      {k: 0.5 * v for k, v in mt_reward_terms.items()})
+    return RewardFnOutput(
+      reward=0.333 * (termination_reward + reward_speed + mt_reward),
+      debug=debug_terms,
+      reward_terms=sort_dict(reward_terms))
+    
+  else:
+    termination_reward, debug_terms, termination_reward_terms = (
+      termination_reward_fn(speed, termination_error_threshold))  
+    reward_terms = {k: v for k, v in termination_reward_terms.items()}   
+    return RewardFnOutput(reward_speed,
+         debug=debug_terms,
+      reward_terms=sort_dict(reward_terms))
+    
+def tracking_and_speed_fn_periodic(termination_error, termination_error_threshold,
+                    walker_features, reference_features, env, physics,**unused_kwargs):
+  
+  """" first part comic reward afterwards only speed reward"""
+  
+  xvel = env._walker.observables.torso_xvel(physics)
+  yvel = env._walker.observables.torso_yvel(physics)
+  speed = np.linalg.norm([xvel, yvel])  
+  TARGET_SPEED = 4.
+  MAX_DIFF_SPEED = 4.
+  error = (TARGET_SPEED - speed)**2
+  reward_speed = 1 - np.clip(abs(speed - TARGET_SPEED)/MAX_DIFF_SPEED,0,1)
+  # print("speed reward: ", reward)
+  debug_terms = {
+      'termination_error': termination_error,
+      'termination_error_threshold': termination_error_threshold
+  }
+  
+  termination_reward, debug_terms, termination_reward_terms = (
+    termination_reward_fn(termination_error, termination_error_threshold))
+  mt_reward, mt_debug_terms, mt_reward_terms = multi_term_pose_reward_fn(
+    walker_features, reference_features)
+  debug_terms.update(mt_debug_terms)
+  reward_terms = {k: 0.5 * v for k, v in termination_reward_terms.items()}
+  reward_terms.update(
+    {k: 0.5 * v for k, v in mt_reward_terms.items()})
+  
+  if env._time_step < 30:
+  
+    return RewardFnOutput(
+      reward=0.5 * (termination_reward + mt_reward),
+      debug=debug_terms,
+      reward_terms=sort_dict(reward_terms))
+    
+  else:
+    return RewardFnOutput(
+      reward=0.333 * (termination_reward + reward_speed + mt_reward),
+      debug=debug_terms,
+      reward_terms=sort_dict(reward_terms))
+      
+
 _REWARD_FN = {
     'termination_reward': termination_reward_fn,
     'multi_term_pose_reward': multi_term_pose_reward_fn,
     'comic': comic_reward_fn,
+    'tracking+speed': tracking_and_speed_fn,
+    'tracking+speed_combined': tracking_and_speed_fn_combined,
+    'tracking+speed_periodic': tracking_and_speed_fn_periodic,
 }
 
 _REWARD_CHANNELS = {
@@ -168,6 +281,7 @@ _REWARD_CHANNELS = {
         ('appendages', 'body_quaternions', 'center_of_mass', 'joints_velocity'),
     'comic': ('appendages', 'body_quaternions', 'center_of_mass', 'termination',
               'joints_velocity'),
+    'tracking+speed': ('speed'),
 }
 
 

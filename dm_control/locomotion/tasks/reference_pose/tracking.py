@@ -738,42 +738,73 @@ class ReferencePosesTask(composer.Task, metaclass=abc.ABCMeta):
               physics)
     return reference_observations
 
-    def get_reward(self, physics: 'mjcf.Physics') -> float:
-      # HACK THAT ONLY SHOULD WORK FOR RUNNING DATASET
-      # print("time step: ", self._time_step)
+  # def get_reward(self, physics: 'mjcf.Physics') -> float:
+  #   # HACK THAT ONLY SHOULD WORK FOR RUNNING DATASET
+  #   # print("time step: ", self._time_step)
       
-      reward, unused_debug_outputs, reward_channels = self._reward_fn(
-          termination_error=self._termination_error,
-          termination_error_threshold=self._termination_error_threshold,
-          reference_features=self._current_reference_features,
-          walker_features=self._walker_features,
-          reference_observations=self._reference_observations)
+  #   reward, unused_debug_outputs, reward_channels = self._reward_fn(
+  #         termination_error=self._termination_error,
+  #         termination_error_threshold=self._termination_error_threshold,
+  #         reference_features=self._current_reference_features,
+  #         walker_features=self._walker_features,
+  #         reference_observations=self._reference_observations)
       
-      # self.collected_ref_features.append(self._current_reference_features)
+  #   # self.collected_ref_features.append(self._current_reference_features)
 
+  #   if 'actuator_force' in self._reward_keys:
+  #     reward_channels['actuator_force'] = -self._actuator_force_coeff*np.mean(
+  #         np.square(self._walker.actuator_force(physics)))
+      
+  #   # print("time step: ", self._time_step)
+  #   # print(self._walker.observables)
+  #   xvel = self._walker.observables.torso_xvel(physics)
+  #   yvel = self._walker.observables.torso_yvel(physics)
+  #   speed = np.linalg.norm([xvel, yvel])  
+  #   TARGET_SPEED = 4.
+  #   MAX_DIFF_SPEED = 4.
+  #   error = (TARGET_SPEED - speed)**2
+  #   reward_speed = 1 - np.clip(abs(speed - TARGET_SPEED)/MAX_DIFF_SPEED,0,1)
+  #   # print("speed reward: ", reward)
+
+  #   if self._time_step < 48:
+  #     self._should_truncate = self._termination_error > self._termination_error_threshold
+
+  #     if self._props:
+  #       prop_termination = self._prop_termination_error > self._prop_termination_error_threshold
+  #       self._should_truncate = self._should_truncate or prop_termination
+      
+  #     return 0.5*(reward + reward_speed)
+    
+  #   else:     
+  #     self._should_truncate = error > self._termination_error_threshold
+  #   return reward_speed
+
+  def get_reward(self, physics: 'mjcf.Physics') -> float:
+    
+    reward, unused_debug_outputs, reward_channels = self._reward_fn(
+        termination_error=self._termination_error,
+        termination_error_threshold=self._termination_error_threshold,
+        reference_features=self._current_reference_features,
+        walker_features=self._walker_features,
+        reference_observations=self._reference_observations,
+        env=self,
+        physics=physics,
+        )
+    
     if 'actuator_force' in self._reward_keys:
       reward_channels['actuator_force'] = -self._actuator_force_coeff*np.mean(
           np.square(self._walker.actuator_force(physics)))
       
-    # print("time step: ", self._time_step)
-    # print(self._walker.observables)
-    xvel = self._walker.observables.torso_xvel(physics)
-    yvel = self._walker.observables.torso_yvel(physics)
-    speed = np.linalg.norm([xvel, yvel])  
-    TARGET_SPEED = 4.
-    MAX_DIFF_SPEED = 4.
-    error = (TARGET_SPEED - speed)**2
-    reward_speed = 1 - np.clip(abs(speed - TARGET_SPEED)/MAX_DIFF_SPEED,0,1)
-    # print("speed reward: ", reward)
+    self._should_truncate = self._termination_error > self._termination_error_threshold
+
+    if self._props:
+      prop_termination = self._prop_termination_error > self._prop_termination_error_threshold
+      self._should_truncate = self._should_truncate or prop_termination
+      
+    self.last_reward_channels = reward_channels
     
-    
-    if self._time_step < 48:
-      self._should_truncate = self._termination_error > self._termination_error_threshold
-      return 0.5*(reward + reward_speed)
-    
-    else:     
-      self._should_truncate = error > self._termination_error_threshold
-    return reward_speed
+    return reward
+  
 
   def _set_walker(self, physics: 'mjcf.Physics'):
     timestep_features = tree.map_structure(lambda x: x[self._time_step],

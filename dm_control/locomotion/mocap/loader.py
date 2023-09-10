@@ -126,9 +126,11 @@ class HDF5TrajectoryLoader(TrajectoryLoader):
 
     h5_trajectory = self._h5_file[key]
     num_steps = h5_trajectory.attrs['num_steps']
+    
     # HACK
     actual_max = num_steps
-    num_steps = 200
+    num_steps = 600
+    # h5_trajectory.attrs['num_steps'] = num_steps
 
     proto = mocap_pb2.FittedTrajectory()
     proto.identifier = key
@@ -157,8 +159,9 @@ class HDF5TrajectoryLoader(TrajectoryLoader):
       for timestep_id, timestep in enumerate(proto.timesteps):
         walker_timestep = timestep.walkers.add()
         for k, v in walker_fields.items():
-          # HACK
-          extension = v[:, timestep_id] if timestep_id < actual_max else v[:, -1]
+          # HACK periodic
+          fake_time_step = timestep_id if timestep_id < actual_max else 16 + (timestep_id % (actual_max-16))   
+          extension = v[:, fake_time_step]
           getattr(walker_timestep, k).extend(extension)
           # getattr(walker_timestep, k).extend(v[:, timestep_id])
 

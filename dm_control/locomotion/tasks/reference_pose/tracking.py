@@ -560,8 +560,7 @@ class ReferencePosesTask(composer.Task, metaclass=abc.ABCMeta):
       return True
 
     if self._end_mocap:
-      # HACK: ignoring the end of mocap
-      logging.info('End of mocap.')
+      # HACK: ignoring the end of mocap for now
       return False
 
     return False

@@ -119,6 +119,10 @@ class ReferencePosesTask(composer.Task, metaclass=abc.ABCMeta):
       body_error_multiplier: Union[int, float] = 1.0,
       actuator_force_coeff: float = 0.015,
       enabled_reference_observables: Optional[Sequence[Text]] = None,
+      # HACK: custom kwargs
+      maximum_speed: float = None,
+      target_speed: float = None,
+      speed_error_threshold: float = None,
   ):
     """Abstract task that uses reference data.
 
@@ -169,6 +173,11 @@ class ReferencePosesTask(composer.Task, metaclass=abc.ABCMeta):
     self._body_error_multiplier = body_error_multiplier
     self._actuator_force_coeff = actuator_force_coeff
     logging.info('Reward type %s', reward_type)
+
+    # HACK: custom kwargs
+    self._maximum_speed = maximum_speed
+    self._target_speed = target_speed
+    self._speed_error_threshold = speed_error_threshold
 
     if isinstance(dataset, Text):
       try:
@@ -476,8 +485,8 @@ class ReferencePosesTask(composer.Task, metaclass=abc.ABCMeta):
         self._current_clip_index]) * self._current_clip.dt
     self._last_step = len(
         self._clip_reference_features['joints']) - self._max_ref_step - 1
-    logging.info('Mocap %s at step %d with remaining length %d.', clip_id,
-                 start_step, self._last_step - start_step)
+    # logging.info('Mocap %s at step %d with remaining length %d.', clip_id,
+    #              start_step, self._last_step - start_step)
 
   def initialize_episode(self, physics: 'mjcf.Physics',
                          random_state: np.random.RandomState):
@@ -756,23 +765,25 @@ class ReferencePosesTask(composer.Task, metaclass=abc.ABCMeta):
         reward_channels['actuator_force'] = -self._actuator_force_coeff*np.mean(
             np.square(self._walker.actuator_force(physics)))
       
-      if self._time_step < 48:
-        self._should_truncate = self._termination_error > self._termination_error_threshold
+      # if self._last_step is None:
+      #   self._should_truncate = self._termination_error > self._termination_error_threshold
+      #   return reward
+      # HACK: custom termination function
+      if self._time_step < self._last_step:
         # print("comic reward: ", reward)
+        self._should_truncate = self._termination_error > self._termination_error_threshold
         return reward
-      
-      else:     
-        # print("time step: ", self._time_step)
+      else:
+        # HACK: custom termination function
         xvel = self._walker.observables.torso_xvel(physics)
         yvel = self._walker.observables.torso_yvel(physics)
-        speed = np.linalg.norm([xvel, yvel])  
-        TARGET_SPEED = 4.
-        MAX_SPEED = 4.
-        error = (TARGET_SPEED - speed)**2
-        speed = np.clip(speed, 0, MAX_SPEED)
-        reward = 1 - abs(speed - TARGET_SPEED)/MAX_SPEED    
-        # print("speed reward: ", reward)
-        self._should_truncate = error > self._termination_error_threshold
+        speed = np.linalg.norm([xvel, yvel])
+        error = (self._target_speed - speed)**2
+        speed = np.clip(speed, 0, self._maximum_speed)
+        reward = 1 - abs(speed - self._target_speed) / self._maximum_speed
+        self._should_truncate = error > self._speed_error_threshold
+        if self._should_truncate:
+          print("\tSpeed error: ", error)
         return reward
 
   def _set_walker(self, physics: 'mjcf.Physics'):
@@ -850,6 +861,10 @@ class MultiClipMocapTracking(ReferencePosesTask):
       body_error_multiplier: Union[int, float] = 1.0,
       actuator_force_coeff: float = 0.015,
       enabled_reference_observables: Optional[Sequence[Text]] = None,
+      # HACK: custom kwargs
+      maximum_speed: float = None,
+      target_speed: float = None,
+      speed_error_threshold: float = None,
   ):
     """Mocap tracking task.
 
@@ -906,7 +921,11 @@ class MultiClipMocapTracking(ReferencePosesTask):
         ghost_offset=ghost_offset,
         body_error_multiplier=body_error_multiplier,
         actuator_force_coeff=actuator_force_coeff,
-        enabled_reference_observables=enabled_reference_observables)
+        enabled_reference_observables=enabled_reference_observables,
+        # HACK: new kwargs
+        maximum_speed=maximum_speed,
+        target_speed=target_speed,
+        speed_error_threshold=speed_error_threshold)
     self._walker.observables.add_observable(
         'time_in_clip',
         base_observable.Generic(self.get_normalized_time_in_clip))
@@ -932,18 +951,17 @@ class MultiClipMocapTracking(ReferencePosesTask):
     }
 
     # Compute Error.
-    # TODO USE THIS BELOW FOR JOGGING ONLY
-    TARGET_SPEED = 2.6
+    # HACK
     if self._time_step < self._last_step:
       self._compute_termination_error()
     else:
       xvel = self._walker.observables.torso_xvel(physics)
       yvel = self._walker.observables.torso_yvel(physics)
       speed = np.linalg.norm([xvel, yvel])
-      self._termination_error = (TARGET_SPEED - speed)**2
-      self._should_truncate = self._termination_error > self._termination_error_threshold
-      if self._termination_error > self._termination_error_threshold:
-        print('\tSPEED MISMATCH -> TERMINATING', self._termination_error, speed, TARGET_SPEED)
+      self._termination_error = (self._target_speed - speed)**2
+      self._should_truncate = self._termination_error > self._speed_error_threshold
+      if self._termination_error > self._speed_error_threshold:
+        print('\tSPEED MISMATCH -> TERMINATING', self._termination_error, speed, self._target_speed)
 
     # Terminate based on the error.
     self._end_mocap = self._time_step == self._last_step
@@ -1015,8 +1033,8 @@ class PlaybackTask(ReferencePosesTask):
         self._current_clip_index]) * self._current_clip.dt
     self._last_step = len(
         self._clip_reference_features['joints']) - self._max_ref_step - 1
-    logging.info('Mocap %s at step %d with remaining length %d.', clip_id,
-                 start_step, self._last_step - start_step)
+    # logging.info('Mocap %s at step %d with remaining length %d.', clip_id,
+    #              start_step, self._last_step - start_step)
 
   def _set_walker(self, physics: 'mjcf.Physics'):
     timestep_features = tree.map_structure(lambda x: x[self._time_step],

@@ -951,10 +951,9 @@ class MultiClipMocapTracking(ReferencePosesTask):
     }
 
     # Compute Error.
-    # HACK
-    if self._time_step < self._last_step:
-      self._compute_termination_error()
-    else:
+    self._compute_termination_error()
+    # Override termination error with velocity-based error if timestep is out of bounds
+    if self._time_step >= self._last_step:
       xvel = self._walker.observables.torso_xvel(physics)
       yvel = self._walker.observables.torso_yvel(physics)
       speed = np.linalg.norm([xvel, yvel])
